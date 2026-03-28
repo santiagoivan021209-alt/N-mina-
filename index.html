@@ -767,72 +767,83 @@ async function apiGet(params){
 }
 
 async function cargarDatos(){
-  // 1. Cargar caché local de inmediato — la app siempre muestra lo que tenés guardado
-  const cacheEmps = localStorage.getItem('gp_emps');
-  const cacheSrvs = localStorage.getItem('gp_srvs');
-  if(cacheEmps){
-    try{
-      colaboradores = JSON.parse(cacheEmps).map(ne);
-      servicios     = JSON.parse(cacheSrvs||'[]').map(ns);
-      renderAll();
-    }catch(e){}
-  }
   setSS('loading','Conectando con Google Sheets...');
 
-  // 2. Conectar con Sheets — la app es siempre la fuente de verdad
-  // Si hay datos locales → subirlos a Sheets (para que Sheets refleje lo que tenés en la app)
-  // Si no hay datos locales → bajar lo que haya en Sheets (primera vez o dispositivo nuevo)
+  // PASO 1: intentar traer datos de Sheets SIEMPRE
+  // Sheets es la fuente de verdad entre dispositivos
   try{
-    if(cacheEmps && colaboradores.length > 0){
-      // Tenés datos locales → subir a Sheets para mantenerlo sincronizado
-      const payload = colaboradores.map(e=>({...e, servicios: e.servicios.join('|')}));
-      await apiGet({action:'saveEmps', data: JSON.stringify(payload)});
-      if(servicios.length) await apiGet({action:'saveSrvs', data: JSON.stringify(servicios)});
-      setSS('ok', 'Sincronizado · ' + colaboradores.length + ' colaboradores en Sheets');
+    const data = await apiGet({action:'getAll'});
+    const sheetsColabs = Array.isArray(data.emps) ? data.emps.map(ne) : [];
+    const sheetsSrvs   = Array.isArray(data.srvs) ? data.srvs.map(ns) : [];
+
+    if(sheetsColabs.length > 0){
+      // Sheets tiene datos → usarlos y guardar en local
+      colaboradores = sheetsColabs;
+      servicios     = sheetsSrvs;
+      localStorage.setItem('gp_emps', JSON.stringify(colaboradores));
+      localStorage.setItem('gp_srvs', JSON.stringify(servicios));
+      setSS('ok', 'Conectado · ' + colaboradores.length + ' colaboradores');
+      renderAll();
     } else {
-      // Sin datos locales → bajar de Sheets (primera vez que abrís la app)
-      const data = await apiGet({action:'getAll'});
-      if(Array.isArray(data.emps) && data.emps.length > 0){
-        colaboradores = data.emps.map(ne);
-        servicios     = Array.isArray(data.srvs) ? data.srvs.map(ns) : [];
-        localStorage.setItem('gp_emps', JSON.stringify(colaboradores));
-        localStorage.setItem('gp_srvs', JSON.stringify(servicios));
-        setSS('ok', 'Conectado · ' + colaboradores.length + ' colaboradores cargados desde Sheets');
-        renderAll();
+      // Sheets vacío → ver si hay datos locales para subir
+      const cacheEmps = localStorage.getItem('gp_emps');
+      if(cacheEmps){
+        try{
+          colaboradores = JSON.parse(cacheEmps).map(ne);
+          servicios     = JSON.parse(localStorage.getItem('gp_srvs')||'[]').map(ns);
+          // Subir datos locales a Sheets
+          const payload = colaboradores.map(e=>({...e, servicios: e.servicios.join('|')}));
+          await apiGet({action:'saveEmps', data: JSON.stringify(payload)});
+          if(servicios.length) await apiGet({action:'saveSrvs', data: JSON.stringify(servicios)});
+          setSS('ok', 'Sincronizado · ' + colaboradores.length + ' colaboradores subidos a Sheets');
+          renderAll();
+        }catch(e2){
+          setSS('ok','Conectado · Sheets vacío');
+        }
       } else {
-        setSS('ok', 'Conectado · Sheets vacío, listo para importar');
+        setSS('ok','Conectado · Sheets vacío, listo para importar');
       }
     }
   }catch(e){
-    const msg = e.name==='AbortError' ? 'Sin respuesta (tiempo agotado)' : (e.message||'Sin conexión');
-    setSS('error', msg + (cacheEmps ? ' · ' + colaboradores.length + ' colaboradores en memoria local' : ''));
+    // Sin conexión → mostrar datos locales si existen
+    const cacheEmps = localStorage.getItem('gp_emps');
+    if(cacheEmps){
+      try{
+        colaboradores = JSON.parse(cacheEmps).map(ne);
+        servicios     = JSON.parse(localStorage.getItem('gp_srvs')||'[]').map(ns);
+        renderAll();
+      }catch(e2){}
+    }
+    const msg = e.name==='AbortError'?'Sin respuesta (tiempo agotado)':(e.message||'Sin conexión');
+    setSS('error', msg + (colaboradores.length > 0 ? ' · mostrando ' + colaboradores.length + ' colaboradores locales' : ''));
   }
 }
 
 async function saveEmps(){
+  // Guardar en local Y en Sheets simultáneamente
   localStorage.setItem('gp_emps', JSON.stringify(colaboradores));
   const payload = colaboradores.map(e=>({...e, servicios: e.servicios.join('|')}));
   try{
-    setSS('loading','Guardando...');
+    setSS('loading','Guardando en Sheets...');
     await apiGet({action:'saveEmps', data: JSON.stringify(payload)});
-    setSS('ok','Guardado · Google Sheets');
-    showToast('Colaboradores guardados ✓','success');
+    setSS('ok','Guardado · ' + colaboradores.length + ' colaboradores en Sheets');
+    showToast('Guardado en Google Sheets ✓','success');
   }catch(e){
-    setSS('error','Sin conexión · guardado solo local');
-    showToast('Guardado localmente. Error Sheets: ' + e.message,'error');
+    setSS('error','Sin conexión · guardado solo en este dispositivo');
+    showToast('Guardado localmente. Sin conexión a Sheets.','error');
   }
 }
 
 async function saveSrvs(){
   localStorage.setItem('gp_srvs', JSON.stringify(servicios));
   try{
-    setSS('loading','Guardando...');
+    setSS('loading','Guardando en Sheets...');
     await apiGet({action:'saveSrvs', data: JSON.stringify(servicios)});
-    setSS('ok','Guardado · Google Sheets');
-    showToast('Servicios guardados ✓','success');
+    setSS('ok','Guardado · Sheets');
+    showToast('Servicios guardados en Sheets ✓','success');
   }catch(e){
-    setSS('error','Sin conexión · guardado solo local');
-    showToast('Guardado localmente. Error Sheets: ' + e.message,'error');
+    setSS('error','Sin conexión · guardado solo en este dispositivo');
+    showToast('Servicios guardados localmente. Sin conexión a Sheets.','error');
   }
 }
 
@@ -1878,32 +1889,25 @@ async function syncSegundoPlano(){
     const sheetsColabs = Array.isArray(data.emps) ? data.emps : [];
     const sheetsSrvs   = Array.isArray(data.srvs) ? data.srvs : [];
 
-    // Comparar usando JSON stringify para detectar cambios reales
+    // Comparar Sheets con lo local para detectar cambios de otro dispositivo
     const localJSON  = localStorage.getItem('gp_emps') || '[]';
     const sheetsJSON = JSON.stringify(sheetsColabs);
 
-    // Si Sheets tiene datos DIFERENTES a los locales y tiene al menos un colaborador
+    // Si Sheets tiene datos DIFERENTES a los locales → alguien cambió algo desde otro dispositivo
     if(sheetsJSON !== localJSON && sheetsColabs.length > 0){
-      const sheetsCount  = sheetsColabs.length;
-      const localCount   = colaboradores.length;
-
-      // Solo bajar si Sheets tiene MÁS datos (otro usuario agregó colaboradores)
-      // Si Sheets tiene MENOS, ignorar (ya tenemos más, no pisar)
-      if(sheetsCount > localCount){
-        colaboradores = sheetsColabs.map(ne);
-        servicios     = sheetsSrvs.map(ns);
-        localStorage.setItem('gp_emps', JSON.stringify(colaboradores));
-        localStorage.setItem('gp_srvs', JSON.stringify(servicios));
-        renderAll();
-        ultimaActualizacion = Date.now();
-        // Notificación discreta
-        const dot = document.getElementById('syncDot');
-        const txt = document.getElementById('syncText');
-        if(dot) dot.className = 'sync-dot ok';
-        if(txt){
-          txt.textContent = '↓ Actualizado · ' + sheetsCount + ' colaboradores';
-          setTimeout(()=>{ if(txt) txt.textContent = 'Conectado · Google Sheets'; }, 3000);
-        }
+      colaboradores = sheetsColabs.map(ne);
+      servicios     = sheetsSrvs.map(ns);
+      localStorage.setItem('gp_emps', JSON.stringify(colaboradores));
+      localStorage.setItem('gp_srvs', JSON.stringify(servicios));
+      renderAll();
+      ultimaActualizacion = Date.now();
+      // Notificación discreta
+      const dot = document.getElementById('syncDot');
+      const txt = document.getElementById('syncText');
+      if(dot) dot.className = 'sync-dot ok';
+      if(txt){
+        txt.textContent = '↓ Actualizado desde otro dispositivo · ' + sheetsColabs.length + ' colaboradores';
+        setTimeout(()=>{ if(txt) txt.textContent = 'Conectado · Google Sheets'; }, 4000);
       }
     }
   }catch(e){
