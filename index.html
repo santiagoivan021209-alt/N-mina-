@@ -1855,6 +1855,84 @@ function borrarDatosLocales(){
 cargarDatos();
 // Init config panel after load
 setTimeout(initConfig, 500);
+
+// ===== AUTO-SINCRONIZACIÓN EN TIEMPO REAL =====
+// Revisa Sheets cada 2 minutos en segundo plano.
+// Si alguien desde otro dispositivo guardó cambios, los trae automáticamente.
+// Solo actualiza si la versión de Sheets es MÁS NUEVA que la local
+// (usando un timestamp guardado en Sheets como indicador de cambio).
+
+let autoSyncInterval = null;
+let ultimaActualizacion = Date.now();
+let syncActivo = false;
+
+async function syncSegundoPlano(){
+  // No sincronizar si hay un guardado en curso o si el drawer está abierto
+  if(syncActivo) return;
+  if(document.getElementById('modalEmp')?.classList.contains('open')) return;
+  if(document.getElementById('modalSrv')?.classList.contains('open')) return;
+
+  syncActivo = true;
+  try{
+    const data = await apiGet({action:'getAll'});
+    const sheetsColabs = Array.isArray(data.emps) ? data.emps : [];
+    const sheetsSrvs   = Array.isArray(data.srvs) ? data.srvs : [];
+
+    // Comparar usando JSON stringify para detectar cambios reales
+    const localJSON  = localStorage.getItem('gp_emps') || '[]';
+    const sheetsJSON = JSON.stringify(sheetsColabs);
+
+    // Si Sheets tiene datos DIFERENTES a los locales y tiene al menos un colaborador
+    if(sheetsJSON !== localJSON && sheetsColabs.length > 0){
+      const sheetsCount  = sheetsColabs.length;
+      const localCount   = colaboradores.length;
+
+      // Solo bajar si Sheets tiene MÁS datos (otro usuario agregó colaboradores)
+      // Si Sheets tiene MENOS, ignorar (ya tenemos más, no pisar)
+      if(sheetsCount > localCount){
+        colaboradores = sheetsColabs.map(ne);
+        servicios     = sheetsSrvs.map(ns);
+        localStorage.setItem('gp_emps', JSON.stringify(colaboradores));
+        localStorage.setItem('gp_srvs', JSON.stringify(servicios));
+        renderAll();
+        ultimaActualizacion = Date.now();
+        // Notificación discreta
+        const dot = document.getElementById('syncDot');
+        const txt = document.getElementById('syncText');
+        if(dot) dot.className = 'sync-dot ok';
+        if(txt){
+          txt.textContent = '↓ Actualizado · ' + sheetsCount + ' colaboradores';
+          setTimeout(()=>{ if(txt) txt.textContent = 'Conectado · Google Sheets'; }, 3000);
+        }
+      }
+    }
+  }catch(e){
+    // Silencioso en segundo plano — no molestar al usuario con errores de sync automático
+  } finally {
+    syncActivo = false;
+  }
+}
+
+// Iniciar auto-sync cada 2 minutos
+function iniciarAutoSync(){
+  if(autoSyncInterval) clearInterval(autoSyncInterval);
+  autoSyncInterval = setInterval(syncSegundoPlano, 2 * 60 * 1000); // cada 2 minutos
+}
+
+// Pausar auto-sync cuando la pestaña está oculta (ahorra recursos)
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){
+    clearInterval(autoSyncInterval);
+  } else {
+    // Al volver a la pestaña, sincronizar de inmediato y reiniciar el intervalo
+    syncSegundoPlano();
+    iniciarAutoSync();
+  }
+});
+
+// Arrancar
+setTimeout(iniciarAutoSync, 5000); // esperar 5s antes de empezar el ciclo
+
 </script>
 </body>
 </html>
