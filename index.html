@@ -519,9 +519,11 @@ window.addEventListener('load', ()=>{
       <div class="card-title">Gestión de datos</div>
       <p style="color:var(--muted);font-size:12px;margin-bottom:14px;">Acciones sobre los datos cargados actualmente en la app.</p>
       <div class="flex-gap" style="gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="forzarSubidaSheets()" id="btnForzarSubida">⬆ Subir TODO a Sheets ahora</button>
         <button class="btn btn-secondary" onclick="recargarDatos()">🔄 Recargar desde Sheets</button>
         <button class="btn btn-danger" onclick="borrarDatosLocales()">🗑 Borrar datos locales</button>
       </div>
+      <div style="margin-top:12px;font-size:11px;color:var(--muted)" id="cfgUploadStatus"></div>
       <div style="margin-top:14px;font-size:11px;color:var(--muted)" id="cfgStats"></div>
     </div>
   </div>
@@ -1845,6 +1847,63 @@ async function probarConexion(){
   }catch(e){
     if(result){result.textContent='✗ Error: '+e.message;result.style.color='var(--danger)';}
     showToast('Error de conexión: '+e.message,'error');
+  }
+}
+
+async function forzarSubidaSheets(){
+  if(!colaboradores.length){
+    showToast('No hay colaboradores para subir','error');
+    return;
+  }
+  const btn = document.getElementById('btnForzarSubida');
+  const status = document.getElementById('cfgUploadStatus');
+  btn.disabled = true;
+  btn.textContent = '⏳ Subiendo...';
+  setSS('loading', 'Subiendo ' + colaboradores.length + ' colaboradores a Sheets...');
+  if(status) status.textContent = 'Preparando datos...';
+
+  try{
+    // Subir en lotes de 4 para no superar el límite de URL de Apps Script (~8000 chars)
+    const CHUNK = 4;
+    const payload = colaboradores.map(e=>({...e, servicios: e.servicios.join('|')}));
+    const total = payload.length;
+    let subidos = 0;
+
+    for(let i = 0; i < payload.length; i += CHUNK){
+      const chunk = payload.slice(i, i + CHUNK);
+      const esUltimo = (i + CHUNK) >= payload.length;
+      await apiGet({
+        action: 'saveEmpsChunk',
+        data: JSON.stringify(chunk),
+        offset: String(i),
+        total: String(total),
+        last: esUltimo ? '1' : '0'
+      });
+      subidos += chunk.length;
+      const pct = Math.round(subidos/total*100);
+      if(status) status.textContent = `Subiendo... ${subidos}/${total} colaboradores (${pct}%)`;
+      setSS('loading', `Subiendo... ${subidos}/${total}`);
+    }
+
+    // Subir servicios
+    if(servicios.length){
+      await apiGet({action:'saveSrvs', data: JSON.stringify(servicios)});
+    }
+
+    localStorage.setItem('gp_emps', JSON.stringify(colaboradores));
+    localStorage.setItem('gp_srvs', JSON.stringify(servicios));
+    setSS('ok', 'Subido · ' + total + ' colaboradores en Sheets ✓');
+    showToast('✓ ' + total + ' colaboradores subidos a Sheets', 'success');
+    if(status) status.textContent = '✓ ' + total + ' colaboradores subidos correctamente. Ahora podés abrir la app desde otra compu y van a aparecer.';
+    if(status) status.style.color = 'var(--success)';
+
+  }catch(e){
+    setSS('error', 'Error al subir: ' + e.message);
+    showToast('Error: ' + e.message, 'error');
+    if(status){ status.textContent = 'Error: ' + e.message; status.style.color = 'var(--danger)'; }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬆ Subir TODO a Sheets ahora';
   }
 }
 
