@@ -122,6 +122,108 @@
 </head>
 <body>
 
+<!-- ===== LOGIN ===== -->
+<div id="loginScreen" style="
+  position:fixed;inset:0;background:#0f0f0f;z-index:9999;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'DM Mono',monospace;
+">
+  <div style="
+    background:#171717;border:1px solid #2a2a2a;border-radius:14px;
+    padding:40px 44px;width:380px;max-width:93vw;
+    box-shadow:0 0 60px rgba(0,0,0,.6);
+  ">
+    <!-- Logo -->
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px;letter-spacing:-.5px;">
+        Nomina — <span style="color:#c8f135;">Gestión del Personal</span>
+      </div>
+      <div style="font-size:11px;color:#666;margin-top:6px;">Ingresá tus credenciales para continuar</div>
+    </div>
+
+    <!-- Form -->
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <label style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#666;">Usuario</label>
+        <input id="loginUser" type="text" placeholder="Nombre de usuario"
+          style="background:#1f1f1f;border:1px solid #2a2a2a;border-radius:7px;color:#f0f0f0;
+                 font-family:'DM Mono',monospace;font-size:13px;padding:11px 14px;outline:none;
+                 transition:border-color .15s;"
+          onfocus="this.style.borderColor='#c8f135'" onblur="this.style.borderColor='#2a2a2a'"
+          onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <label style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#666;">Contraseña</label>
+        <div style="position:relative;">
+          <input id="loginPass" type="password" placeholder="Contraseña"
+            style="background:#1f1f1f;border:1px solid #2a2a2a;border-radius:7px;color:#f0f0f0;
+                   font-family:'DM Mono',monospace;font-size:13px;padding:11px 40px 11px 14px;
+                   outline:none;transition:border-color .15s;width:100%;"
+            onfocus="this.style.borderColor='#c8f135'" onblur="this.style.borderColor='#2a2a2a'"
+            onkeydown="if(event.key==='Enter')hacerLogin()">
+          <button onclick="togglePass()" style="
+            position:absolute;right:12px;top:50%;transform:translateY(-50%);
+            background:none;border:none;color:#666;cursor:pointer;font-size:15px;padding:0;
+          " id="togglePassBtn">👁</button>
+        </div>
+      </div>
+
+      <!-- Error msg -->
+      <div id="loginError" style="
+        display:none;background:rgba(255,77,77,.12);border:1px solid rgba(255,77,77,.25);
+        border-radius:6px;padding:9px 12px;font-size:11px;color:#ff4d4d;text-align:center;
+      ">Usuario o contraseña incorrectos</div>
+
+      <!-- Button -->
+      <button onclick="hacerLogin()" style="
+        background:#c8f135;color:#000;border:none;border-radius:7px;
+        padding:12px;font-family:'DM Mono',monospace;font-size:13px;font-weight:600;
+        cursor:pointer;margin-top:4px;transition:background .15s;
+      " onmouseover="this.style.background='#d4ff4a'" onmouseout="this.style.background='#c8f135'">
+        Ingresar →
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== LOGIN =====
+const _u = 'V2FsdGVyIENoYXZlcw==';
+const _p = 'TsOzbWluYS1kZS1TYW50aQ==';
+
+function hacerLogin(){
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  const err = document.getElementById('loginError');
+  if(btoa(unescape(encodeURIComponent(u))) === _u && btoa(unescape(encodeURIComponent(p))) === _p){
+    document.getElementById('loginScreen').style.display = 'none';
+    sessionStorage.setItem('gp_auth','1');
+  } else {
+    err.style.display = 'block';
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginPass').focus();
+    setTimeout(()=>err.style.display='none', 3000);
+  }
+}
+
+function togglePass(){
+  const inp = document.getElementById('loginPass');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// Si ya inició sesión en esta pestaña, saltear el login
+if(sessionStorage.getItem('gp_auth')==='1'){
+  document.getElementById('loginScreen').style.display='none';
+}
+
+// Foco automático en el campo usuario
+window.addEventListener('load', ()=>{
+  if(document.getElementById('loginScreen').style.display !== 'none'){
+    document.getElementById('loginUser').focus();
+  }
+});
+</script>
+
 <div class="header">
   <div class="logo">Nomina — <span>Gestión del Personal</span></div>
   <div class="sync-status">
