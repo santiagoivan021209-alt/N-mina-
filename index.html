@@ -794,7 +794,7 @@ async function cargarDatos(){
           colaboradores = JSON.parse(cacheEmps).map(ne);
           servicios     = JSON.parse(localStorage.getItem('gp_srvs')||'[]').map(ns);
           // Subir datos locales a Sheets
-          const payload = colaboradores.map(e=>({...e, servicios: e.servicios.join('|')}));
+          const payload = colaboradores.map(e=>({...e, cbu:String(e.cbu||''), servicios:Array.isArray(e.servicios)?e.servicios.join('|'):String(e.servicios||'')}));
           await apiGet({action:'saveEmps', data: JSON.stringify(payload)});
           if(servicios.length) await apiGet({action:'saveSrvs', data: JSON.stringify(servicios)});
           setSS('ok', 'Sincronizado · ' + colaboradores.length + ' colaboradores subidos a Sheets');
@@ -824,7 +824,7 @@ async function cargarDatos(){
 async function saveEmps(){
   // Guardar en local Y en Sheets simultáneamente
   localStorage.setItem('gp_emps', JSON.stringify(colaboradores));
-  const payload = colaboradores.map(e=>({...e, servicios: e.servicios.join('|')}));
+  const payload = colaboradores.map(e=>({...e, cbu:String(e.cbu||''), servicios:Array.isArray(e.servicios)?e.servicios.join('|'):String(e.servicios||'')}));
   try{
     setSS('loading','Guardando en Sheets...');
     await apiGet({action:'saveEmps', data: JSON.stringify(payload)});
@@ -849,7 +849,7 @@ async function saveSrvs(){
   }
 }
 
-function nv(e,k){return e[k]||e[k.charAt(0).toUpperCase()+k.slice(1)]||'';}
+function nv(e,k){const v=e[k]!==undefined?e[k]:e[k.charAt(0).toUpperCase()+k.slice(1)];return(v!==undefined&&v!==null)?String(v):'';}
 function parseSrv(v){
   if(Array.isArray(v)) return v;
   if(!v) return [];
@@ -887,7 +887,7 @@ function ne(e){
     altaArca:nv(e,'altaArca')||'',
     bajaArca:nv(e,'bajaArca')||'',
     tipoCuenta:nv(e,'tipoCuenta')||'',
-    cbu:nv(e,'cbu')||'',
+    cbu:String(nv(e,'cbu')||''),
     alias:nv(e,'alias')||'',
     cud:nv(e,'cud')||'',
     vencCud:nv(e,'vencCud')||'',
@@ -1862,7 +1862,7 @@ async function forzarSubidaSheets(){
   if(status){ status.style.color='var(--text)'; status.textContent='Preparando...'; }
   setSS('loading','Subiendo a Sheets...');
 
-  const payload = colaboradores.map(e=>({...e, servicios: e.servicios.join('|')}));
+  const payload = colaboradores.map(e=>({...e, cbu:String(e.cbu||''), servicios:Array.isArray(e.servicios)?e.servicios.join('|'):String(e.servicios||'')}));
   const total = payload.length;
   let subidos = 0;
   let errores = 0;
