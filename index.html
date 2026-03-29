@@ -1859,30 +1859,46 @@ async function forzarSubidaSheets(){
   const status = document.getElementById('cfgUploadStatus');
   btn.disabled = true;
   btn.textContent = '⏳ Subiendo...';
-  setSS('loading', 'Subiendo ' + colaboradores.length + ' colaboradores a Sheets...');
-  if(status) status.textContent = 'Preparando datos...';
+  if(status){ status.style.color='var(--text)'; status.textContent='Preparando...'; }
+  setSS('loading','Subiendo a Sheets...');
+
+  const payload = colaboradores.map(e=>({...e, servicios: e.servicios.join('|')}));
+  const total = payload.length;
+  let subidos = 0;
+  let errores = 0;
+  const CHUNK = 3; // de a 3 para estar bien dentro del límite
 
   try{
-    // Subir en lotes de 4 para no superar el límite de URL de Apps Script (~8000 chars)
-    const CHUNK = 4;
-    const payload = colaboradores.map(e=>({...e, servicios: e.servicios.join('|')}));
-    const total = payload.length;
-    let subidos = 0;
-
     for(let i = 0; i < payload.length; i += CHUNK){
       const chunk = payload.slice(i, i + CHUNK);
       const esUltimo = (i + CHUNK) >= payload.length;
-      await apiGet({
-        action: 'saveEmpsChunk',
-        data: JSON.stringify(chunk),
-        offset: String(i),
-        total: String(total),
-        last: esUltimo ? '1' : '0'
-      });
+
+      // Reintentar hasta 3 veces por chunk
+      let ok = false;
+      for(let intento = 0; intento < 3; intento++){
+        try{
+          const params = new URLSearchParams();
+          params.set('action','saveEmpsChunk');
+          params.set('data', JSON.stringify(chunk));
+          params.set('offset', String(i));
+          params.set('total', String(total));
+          params.set('last', esUltimo ? '1' : '0');
+          const res = await fetch(getAPI() + '?' + params.toString());
+          if(!res.ok) throw new Error('HTTP ' + res.status);
+          const d = await res.json();
+          if(d.error) throw new Error(d.error);
+          ok = true;
+          break;
+        }catch(err){
+          if(intento === 2) throw err;
+          await new Promise(r=>setTimeout(r, 1000)); // esperar 1s y reintentar
+        }
+      }
+
       subidos += chunk.length;
       const pct = Math.round(subidos/total*100);
-      if(status) status.textContent = `Subiendo... ${subidos}/${total} colaboradores (${pct}%)`;
-      setSS('loading', `Subiendo... ${subidos}/${total}`);
+      if(status) status.textContent = `Subiendo... ${subidos}/${total} (${pct}%)`;
+      setSS('loading',`Subiendo ${subidos}/${total}...`);
     }
 
     // Subir servicios
@@ -1892,16 +1908,18 @@ async function forzarSubidaSheets(){
 
     localStorage.setItem('gp_emps', JSON.stringify(colaboradores));
     localStorage.setItem('gp_srvs', JSON.stringify(servicios));
-    setSS('ok', 'Subido · ' + total + ' colaboradores en Sheets ✓');
-    showToast('✓ ' + total + ' colaboradores subidos a Sheets', 'success');
-    if(status) status.textContent = '✓ ' + total + ' colaboradores subidos correctamente. Ahora podés abrir la app desde otra compu y van a aparecer.';
-    if(status) status.style.color = 'var(--success)';
+    setSS('ok', '✓ ' + total + ' colaboradores en Sheets');
+    showToast('✓ ' + total + ' colaboradores subidos a Sheets','success');
+    if(status){
+      status.style.color = 'var(--success)';
+      status.textContent = '✓ ' + total + ' colaboradores subidos. Ahora abrí la app desde otra compu y van a aparecer.';
+    }
 
   }catch(e){
-    setSS('error', 'Error al subir: ' + e.message);
-    showToast('Error: ' + e.message, 'error');
-    if(status){ status.textContent = 'Error: ' + e.message; status.style.color = 'var(--danger)'; }
-  } finally {
+    setSS('error','Error al subir: ' + e.message);
+    showToast('Error: ' + e.message,'error');
+    if(status){ status.style.color='var(--danger)'; status.textContent='Error: '+e.message+'. Verificá la URL del Apps Script en Configuración y que el código del script sea el último que te pasé.'; }
+  }finally{
     btn.disabled = false;
     btn.textContent = '⬆ Subir TODO a Sheets ahora';
   }
